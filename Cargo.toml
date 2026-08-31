@@ -1,9 +1,9 @@
 [workspace]
   members = [
-  "src/common-lib",
+  "src/common",
   "src/main",
   ]
   resolver = "2"
 
 [workspace.dependencies]
-    common-lib = { path = "src/common-lib" }
+    common = { path = "src/common" }
