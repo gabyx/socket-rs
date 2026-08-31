@@ -1,4 +1,2 @@
     Checking main v0.0.1 (/persist/repos/sockets-rs/src/main)
-error: could not compile `main` (bin "main" test) due to 2 previous errors; 1 warning emitted
-warning: build failed, waiting for other jobs to finish...
-error: could not compile `main` (bin "main") due to 2 previous errors; 1 warning emitted
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.16s
