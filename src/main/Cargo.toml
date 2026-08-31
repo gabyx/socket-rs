@@ -1,0 +1,21 @@
+[package]
+  name = 'main'
+  version = '0.0.1'
+  description = "Test example for NAT traversal with Rust. A learning project."
+  license = ""
+  homepage = " https://github.com/gabyx/socket-rs "
+  keywords = []
+  authors = [
+  "Alice Wonderland <alice.wonderland@sdsc.ethz.ch>",
+  "Bob Wonderland <bob.wonderland@sdsc.ethz.ch>",
+  ]
+  edition = "2024"
+
+[dependencies]
+  anyhow = "1.0.102"
+  clap = { version = "4.6.0", features = ['derive']}
+  common-lib = {  workspace = true }
+
+[lints.clippy]
+  pedantic = "deny"
+  needless_return = "warn"

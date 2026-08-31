@@ -1,0 +1,82 @@
+{ inputs, ... }:
+{
+  imports = [
+    inputs.treefmt-nix.flakeModule
+  ];
+
+  perSystem =
+    {
+      config,
+      self',
+      pkgs,
+      ...
+    }:
+    let
+      treefmt = config.treefmt.build.wrapper;
+    in
+    {
+      # Define formatter for `nix fmt`.
+      formatter = treefmt;
+
+      packages = {
+        inherit treefmt;
+      };
+
+      treefmt = {
+        inherit pkgs;
+        # Used to find the project root
+        # For worktrees we need either `.git` or a file.
+        projectRootFile = "README.md";
+
+        settings.global = {
+          excludes = [
+            "external/**/*"
+            "**/vendor/**/*"
+          ];
+        };
+
+        # Rust
+        programs.rustfmt = {
+            enable = true;
+            package = self'.legacyPackages.rust.shell.toolchain.availableComponents.rustfmt;
+        };
+
+        # Go
+        programs.gofmt.enable = false;
+        programs.goimports.enable = false;
+
+        # Python
+        programs.ruff-format.enable = false;
+
+        # Markdown, JSON, YAML, etc.
+        programs.prettier.enable = true;
+        settings.formatter.prettier = {
+          config = ../../configs/prettier/prettierrc.yaml;
+          excludes = [
+            ".yamllint.yaml" # this is a symlink, which prettier cannot deal with
+          ];
+        };
+
+
+        # Shellscripts (which we should not have!)
+        programs.shfmt = {
+          enable = true;
+          indent_size = 4;
+        };
+        programs.shellcheck = {
+          enable = true;
+        };
+        settings.formatter.shellcheck = {
+          options = [
+            "-e"
+            "SC1091"
+          ];
+        };
+
+        # Nix.
+        programs.deadnix.enable = false;
+        programs.statix.enable = false;
+        programs.nixfmt.enable = true;
+      };
+    };
+}
