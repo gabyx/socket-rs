@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::comm;
+use slog::{Drain, Logger, info, o};
 use std::net;
 
 /// A simple CLI that says hello.
@@ -12,21 +13,29 @@ struct Args {
     side: comm::Side,
 }
 
+/// Build a simple terminal logger: human-readable, timestamped, async.
+fn build_logger() -> Logger {
+    let decorator = slog_term::TermDecorator::new().build();
+    let drain = slog_term::FullFormat::new(decorator).build().fuse();
+    let drain = slog_async::Async::new(drain).build().fuse();
+
+    Logger::root(drain, o!())
+}
+
 fn main() -> Result<()> {
     let args = Args::parse();
+    let log = build_logger();
 
-    println!("Args: {args:?}");
-    println!("Starting socket side '{:?}'.", args.side);
+    info!(log, "Starting up"; "side" => ?args.side);
 
-    let socket = start_socket(args.side)?;
+    let socket = start_socket(&log, args.side)?;
 
     Ok(())
 }
 
-fn start_socket(side: comm::Side) -> Result<net::UdpSocket> {
+fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     let address = format!("127.0.0.1:{}", side.port());
-    println!("Binding UDP socket to '{address}'.");
+    info!(log, "Binding UDP socket"; "address" => &address);
 
-    net::UdpSocket::bind(address.clone())
-        .with_context(|| format!("Cannot bind socket on {address}"))
+    net::UdpSocket::bind(&address).with_context(|| format!("Cannot bind socket on {address}"))
 }
