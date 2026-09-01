@@ -54,3 +54,4 @@ watch *args:
 [group('general')]
 run *args:
     cargo run --target-dir "{{build_dir}}" "$@"
+

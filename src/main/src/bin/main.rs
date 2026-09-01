@@ -55,16 +55,17 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
 }
 
 fn wait_for_sync_point(log: &Logger) {
-    let time_frame = 10;
-    let secs = SystemTime::now()
+    let time_frame = 10.0;
+    let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("could not get time")
-        .as_secs();
+        .as_secs_f64();
 
-    let rest = time_frame - secs % time_frame;
+    let rest = time_frame - (now.rem_euclid(time_frame));
+
     info!(log, "Waiting {rest} secs to next sync point.");
 
-    sleep(Duration::from_secs(rest));
+    sleep(Duration::from_secs_f64(rest));
     info!(log, "Starting");
 }
 
@@ -72,9 +73,9 @@ fn wait_for_sync_point(log: &Logger) {
 fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
 
-    let ping = format!("ping-{side:?}");
-
+    let mut prev_msg: Option<String> = None;
     for i in 0..10 {
+        let ping = format!("ping-{side:?}-{i}");
         let mut s: usize = 0;
 
         while s != ping.len() {
@@ -96,7 +97,14 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
 
         let m = str::from_utf8(msg.as_slice())
             .with_context(|| "could not convert recv. bytes to utf8")?;
+
         info!(log, "Received msg {m:?}");
+        if let Some(p) = prev_msg
+            && p.as_str() >= m
+        {
+            warn!(log, "Message is not in sequence > {p}.");
+        }
+        prev_msg = Some(m.to_owned());
     }
 
     Ok(())
