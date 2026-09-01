@@ -15,6 +15,14 @@ impl Side {
             Side::B => 10011,
         }
     }
+
+    #[must_use]
+    pub fn other(self) -> Side {
+        match self {
+            Side::A => Side::B,
+            Side::B => Side::A,
+        }
+    }
 }
 
 impl<T: AsRef<str>> From<T> for Side {
