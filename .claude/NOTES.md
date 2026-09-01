@@ -21,3 +21,10 @@ just run --side b
 starts both sides and exchanges some pings.
 
 Assumption: I assume the ip:port on side A and B, this should later be got by STUN and then passed through UDP to the other side.
+
+# M2
+
+Prediction:
+STUN message must be send and received from a single socket otherwise it doesnt match what the NAT has configured (SNAT).
+
+Destination NAT is configurable in the router mostly.
