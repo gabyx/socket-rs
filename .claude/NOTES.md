@@ -19,3 +19,5 @@ just run --side b
 ```
 
 starts both sides and exchanges some pings.
+
+Assumption: I assume the ip:port on side A and B, this should later be got by STUN and then passed through UDP to the other side.

@@ -9,12 +9,15 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
-/// A simple CLI that says hello.
 #[derive(Parser, Debug)]
 #[clap(author, version, about, long_about = None)]
 struct Args {
-    /// Name of the person to greet.
-    #[clap(short, long, default_value = "a")]
+    #[clap(
+        short,
+        long,
+        default_value = "a",
+        help = "Which side this client is on."
+    )]
     side: comm::Side,
 }
 
@@ -45,7 +48,7 @@ fn main() -> Result<()> {
 
     info!(log, "Starting up"; "side" => ?args.side);
 
-    let socket = start_socket(&log, args.side.other())?;
+    let socket = start_socket(&log, args.side)?;
 
     ping_pong(&log, args.side, &socket)?;
 
@@ -59,10 +62,7 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     let socket = net::UdpSocket::bind(&our_addr)
         .with_context(|| format!("Cannot bind socket on {our_addr}"))?;
 
-    let other_addr = format!("127.0.0.1:{}", side.other().port());
-    socket
-        .connect(other_addr.clone())
-        .with_context(|| format!("could not connect to socket {other_addr}"))?;
+    socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
     Ok(socket)
 }
@@ -85,28 +85,33 @@ fn wait_for_sync_point(log: &Logger) {
 #[allow(clippy::similar_names)]
 fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
+    let other_addr = format!("127.0.0.1:{}", side.other().port());
 
     let mut data = vec![];
 
-    for i in 0..1000 {
+    for i in 0..10 {
         let ping = Ping { seq: i, side };
-        let mut s: usize = 0;
 
         data.clear();
         data = postcard::to_extend(&ping, data).context("could not serialize")?;
-        while s != data.len() {
-            info!(&log, "Sending ping."; "i" => i);
-            s = sock.send(&data).with_context(|| "could not send ping...")?;
+        info!(log, "Sending ping."; "i" => i);
+        match sock.send_to(&data, &other_addr) {
+            Ok(s) if s != data.len() => warn!(log, "could not send datagram"),
+            Err(e) => warn!(log, "could not send: {e}"),
+            Ok(_) => {}
         }
 
         info!(&log, "Receiving ping: {i}");
-        if let r = sock.recv(&mut data).unwrap_or_else(|e| {
-            warn!(log, "could not receive: {e}");
-            0
-        }) && r == 0
-        {
-            warn!(log, "received 0 bytes");
-            continue;
+        match sock.recv(&mut data) {
+            Ok(0) => {
+                warn!(log, "received no bytes");
+                continue;
+            }
+            Err(e) => {
+                warn!(log, "receive failed: {e}");
+                continue;
+            }
+            Ok(_) => {}
         }
 
         let recv = match postcard::from_bytes::<Ping>(&data) {
