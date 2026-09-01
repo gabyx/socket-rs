@@ -1,7 +1,8 @@
 use clap::ValueEnum;
+use serde::{Deserialize, Serialize};
 use std::convert::From;
 
-#[derive(Debug, Copy, Clone, ValueEnum)]
+#[derive(Debug, Copy, Clone, ValueEnum, Serialize, Deserialize)]
 pub enum Side {
     A,
     B,

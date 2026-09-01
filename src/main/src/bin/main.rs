@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::comm;
+use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
     net,
@@ -17,11 +18,23 @@ struct Args {
     side: comm::Side,
 }
 
+/// One datagram exchanged between the two peers: a ping carrying its sequence
+/// number so the receiver can detect loss and reordering on the wire.
+#[derive(Debug, Serialize, Deserialize)]
+struct Ping {
+    side: comm::Side,
+    seq: u32,
+}
+
 /// Build a simple terminal logger: human-readable, timestamped, async.
 fn build_logger() -> Logger {
     let decorator = slog_term::TermDecorator::new().build();
     let drain = slog_term::FullFormat::new(decorator).build().fuse();
-    let drain = slog_async::Async::new(drain).build().fuse();
+    let drain = slog_async::Async::new(drain)
+        .chan_size(10000)
+        .overflow_strategy(slog_async::OverflowStrategy::Block)
+        .build()
+        .fuse();
 
     Logger::root(drain, o!())
 }
@@ -73,38 +86,41 @@ fn wait_for_sync_point(log: &Logger) {
 fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
 
-    let mut prev_msg: Option<String> = None;
-    for i in 0..10 {
-        let ping = format!("ping-{side:?}-{i}");
+    let mut data = vec![];
+
+    for i in 0..1000 {
+        let ping = Ping { seq: i, side };
         let mut s: usize = 0;
 
-        while s != ping.len() {
+        data.clear();
+        data = postcard::to_extend(&ping, data).context("could not serialize")?;
+        while s != data.len() {
             info!(&log, "Sending ping."; "i" => i);
-            s = sock
-                .send(ping.as_bytes())
-                .with_context(|| "could not send ping...")?;
+            s = sock.send(&data).with_context(|| "could not send ping...")?;
         }
 
-        let mut msg: [u8; 10] = [0; 10];
-        let mut r: usize = 0;
-        while r < ping.len() {
-            info!(&log, "Receiving ping."; "i" => i);
-            r = sock.recv(&mut msg).unwrap_or_else(|_| {
-                warn!(log, "could not receive");
-                0
-            });
-        }
-
-        let m = str::from_utf8(msg.as_slice())
-            .with_context(|| "could not convert recv. bytes to utf8")?;
-
-        info!(log, "Received msg {m:?}");
-        if let Some(p) = prev_msg
-            && p.as_str() >= m
+        info!(&log, "Receiving ping: {i}");
+        if let r = sock.recv(&mut data).unwrap_or_else(|e| {
+            warn!(log, "could not receive: {e}");
+            0
+        }) && r == 0
         {
-            warn!(log, "Message is not in sequence > {p}.");
+            warn!(log, "received 0 bytes");
+            continue;
         }
-        prev_msg = Some(m.to_owned());
+
+        let recv = match postcard::from_bytes::<Ping>(&data) {
+            Ok(p) => p,
+            Err(e) => {
+                warn!(log, "could not decode msg: {e}");
+                continue;
+            }
+        };
+
+        info!(log, "Received: {recv:?}");
+        if recv.seq != i {
+            warn!(log, "Message is not in sequence {} != {i}.", recv.seq);
+        }
     }
 
     Ok(())
