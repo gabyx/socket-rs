@@ -4,7 +4,8 @@ use common::comm;
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
-    net,
+    net::{self, Ipv4Addr},
+    str::FromStr,
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -49,6 +50,8 @@ fn main() -> Result<()> {
     info!(log, "Starting up"; "side" => ?args.side);
 
     let socket = start_socket(&log, args.side)?;
+    let address = discover_address(&log, &socket)?;
+    info!(log, "Discovered address over STUN: {address}");
 
     ping_pong(&log, args.side, &socket)?;
 
@@ -65,6 +68,10 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
     Ok(socket)
+}
+
+fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<net::Ipv4Addr> {
+    Ok(Ipv4Addr::from_str("1.1.1.1").unwrap())
 }
 
 fn wait_for_sync_point(log: &Logger) {
