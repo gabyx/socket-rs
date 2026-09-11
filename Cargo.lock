@@ -185,6 +185,9 @@ dependencies = [
  "anyhow",
  "clap",
  "serde",
+ "slog",
+ "slog-async",
+ "slog-term",
 ]
 
 [[package]]

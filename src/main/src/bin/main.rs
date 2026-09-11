@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use common::comm;
+use common::{
+    comm,
+    stun::{self, send_stun},
+};
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
@@ -59,7 +62,21 @@ fn main() -> Result<()> {
 }
 
 fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
-    let our_addr = format!("127.0.0.1:{}", side.port());
+    // We must take 127.0.0.1 otherwise we cannot
+    // send the STUN binding response to on off-host address.
+    // cause that IP is the loop back device.
+    // Instead let the kernel choose the IP.
+    // The kernel picks a source IP per route, not per destination.
+    // Every destination:
+    // - Google's STUN server,
+    // - out other peer,
+    // resolves to the same default route, same interface, same source IP.
+    // Two different destinations, one source address.
+    // And the part that actually matters for NAT traversal is the source port.
+    // So the kernel uses port 10010 for every packet from that socket
+    // regardless of destination. It does not re-pick a port per peer. That's exactly the invariant "use one socket" is protecting.
+    let our_addr = format!("0.0.0.0:{}", side.port());
+
     info!(log, "Binding UDP socket"; "address" => &our_addr);
 
     let socket = net::UdpSocket::bind(&our_addr)
@@ -71,7 +88,7 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
 }
 
 fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<net::Ipv4Addr> {
-    Ok(Ipv4Addr::from_str("1.1.1.1").unwrap())
+    send_stun(log, socket, stun::PUBLIC_STUN_SERVER)
 }
 
 fn wait_for_sync_point(log: &Logger) {
