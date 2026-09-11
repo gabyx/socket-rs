@@ -59,8 +59,13 @@ impl StunHeader {
     }
 }
 
+// impl<'a> Into<&'a [u8]> for StunHeader {
+//     fn into(self) -> &'a [u8] {}
+// }
+
 // Sends a STUN message to a public stun server to discover our IP
 // address.
 pub fn send_stun(socket: &net::UdpSocket) -> Result<Ipv4Addr> {
+    // socket.send_to()
     Ok(Ipv4Addr::from_str("1.1.1.1").unwrap())
 }

@@ -28,7 +28,10 @@ function main() {
 
     rm -rf ".rustfmt.toml" || true
     ln -s "tools/configs/rust/rustfmt.toml" ".rustfmt.toml"
-    
+
+    rm -rf "rust-analyzer.toml" || true
+    ln -s "tools/configs/rust/rust-analyzer.toml" "rust-analyzer.toml"
+
 }
 
 main "$@"

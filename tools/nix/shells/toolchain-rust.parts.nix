@@ -11,9 +11,13 @@
     {
       toolchains.rust = [
         (
-          { config, ... }:
+          { config, lib, ... }:
+          let
+            toolchain = self'.legacyPackages.rust.shell.toolchain;
+          in
           {
             packages = [
+              toolchain
               pkgs.cargo-watch
 
               # Debugging
@@ -22,11 +26,15 @@
 
             languages.rust = {
               enable = true;
-              toolchainPackage = self'.legacyPackages.rust.shell.toolchain;
+
+              # https://github.com/cachix/devenv/issues/3182
+              toolchainPackage = toolchain;
+              lsp.package = toolchain;
             };
 
             env = {
               CARGO_TARGET_DIR = "${config.devenv.root}/.output/build";
+              RUST_SRC_PATH = lib.mkForce "${toolchain}/lib/rustlib/src/rust/library";
             };
           }
         )
