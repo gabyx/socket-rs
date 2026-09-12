@@ -37,8 +37,8 @@
 
         # Rust
         programs.rustfmt = {
-            enable = true;
-            package = self'.legacyPackages.rust.shell.toolchain.availableComponents.rustfmt;
+          enable = true;
+          package = self'.legacyPackages.rust.shell.toolchain.availableComponents.rustfmt;
         };
 
         # Go
@@ -51,12 +51,14 @@
         # Markdown, JSON, YAML, etc.
         programs.prettier.enable = true;
         settings.formatter.prettier = {
-          config = ../../configs/prettier/prettierrc.yaml;
+          options = [
+            "--config"
+            "${../../configs/prettier/prettierrc.yaml}"
+          ];
           excludes = [
             ".yamllint.yaml" # this is a symlink, which prettier cannot deal with
           ];
         };
-
 
         # Shellscripts (which we should not have!)
         programs.shfmt = {

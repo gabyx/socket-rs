@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
     comm,
-    stun::{self, send_stun},
+    stun::{self, send_stun_binding_request},
 };
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
@@ -62,7 +62,7 @@ fn main() -> Result<()> {
 }
 
 fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
-    // We must take 127.0.0.1 otherwise we cannot
+    // NOTE: We must take 127.0.0.1 otherwise we cannot
     // send the STUN binding response to on off-host address.
     // cause that IP is the loop back device.
     // Instead let the kernel choose the IP.
@@ -75,6 +75,12 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     // And the part that actually matters for NAT traversal is the source port.
     // So the kernel uses port 10010 for every packet from that socket
     // regardless of destination. It does not re-pick a port per peer. That's exactly the invariant "use one socket" is protecting.
+    //
+    // NOTE: The socket has to talk to two different peers over its lifetime:
+    // Google's STUN server, and the other side of the ping-pong.
+    // a `socket.connect()` does not make sense and anyway is a sole kernel
+    // operation on UDP sockets.
+    //
     let our_addr = format!("0.0.0.0:{}", side.port());
 
     info!(log, "Binding UDP socket"; "address" => &our_addr);
@@ -88,7 +94,7 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
 }
 
 fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<net::Ipv4Addr> {
-    send_stun(log, socket, stun::PUBLIC_STUN_SERVER)
+    send_stun_binding_request(log, socket, stun::PUBLIC_STUN_SERVER)
 }
 
 fn wait_for_sync_point(log: &Logger) {
@@ -109,7 +115,7 @@ fn wait_for_sync_point(log: &Logger) {
 #[allow(clippy::similar_names)]
 fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
-    let other_addr = format!("127.0.0.1:{}", side.other().port());
+    let other_addr = ("127.0.0.1", side.other().port());
 
     let mut data = vec![];
 
@@ -126,8 +132,8 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
         }
 
         info!(&log, "Receiving ping: {i}");
-        match sock.recv(&mut data) {
-            Ok(0) => {
+        match sock.recv_from(&mut data) {
+            Ok((0, _)) => {
                 warn!(log, "received no bytes");
                 continue;
             }
@@ -135,7 +141,11 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
                 warn!(log, "receive failed: {e}");
                 continue;
             }
-            Ok(_) => {}
+            Ok((_, addr)) if addr == other_addr.into() => {}
+            Ok((_, addr)) if addr != other_addr.into() => {
+                warn!(log, "receive from unknown source '{addr}'")
+                // FIXME: Should we retry here, how many times?
+            }
         }
 
         let recv = match postcard::from_bytes::<Ping>(&data) {
