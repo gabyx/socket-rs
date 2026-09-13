@@ -7,7 +7,7 @@ use common::{
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
-    net::{self, Ipv4Addr},
+    net::{self, Ipv4Addr, SocketAddr},
     str::FromStr,
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -115,7 +115,7 @@ fn wait_for_sync_point(log: &Logger) {
 #[allow(clippy::similar_names)]
 fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
-    let other_addr = ("127.0.0.1", side.other().port());
+    let other_addr: SocketAddr = ([127, 0, 0, 1], side.other().port()).into();
 
     let mut data = vec![];
 
@@ -125,7 +125,7 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
         data.clear();
         data = postcard::to_extend(&ping, data).context("could not serialize")?;
         info!(log, "Sending ping."; "i" => i);
-        match sock.send_to(&data, &other_addr) {
+        match sock.send_to(&data, other_addr) {
             Ok(s) if s != data.len() => warn!(log, "could not send datagram"),
             Err(e) => warn!(log, "could not send: {e}"),
             Ok(_) => {}
@@ -133,18 +133,19 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
 
         info!(&log, "Receiving ping: {i}");
         match sock.recv_from(&mut data) {
-            Ok((0, _)) => {
-                warn!(log, "received no bytes");
-                continue;
+            Ok((b, addr)) => {
+                if addr != other_addr {
+                    warn!(log, "receive from unknown source '{addr}'");
+                    continue;
+                }
+                if b != 0 {
+                    warn!(log, "receive no bytes from '{addr}'");
+                    continue;
+                }
             }
             Err(e) => {
                 warn!(log, "receive failed: {e}");
                 continue;
-            }
-            Ok((_, addr)) if addr == other_addr.into() => {}
-            Ok((_, addr)) if addr != other_addr.into() => {
-                warn!(log, "receive from unknown source '{addr}'")
-                // FIXME: Should we retry here, how many times?
             }
         }
 
