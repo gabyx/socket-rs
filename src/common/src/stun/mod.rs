@@ -3,7 +3,7 @@ use slog::{Logger, info, warn};
 use std::{
     borrow::{Borrow, BorrowMut},
     collections::HashMap,
-    net::{self, Ipv4Addr, SocketAddr, ToSocketAddrs},
+    net::{self, IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs},
     ops::Range,
     random::{Rng, SystemRng},
     result::Result as StdResult,
@@ -102,6 +102,17 @@ impl TryFrom<u16> for AttributeType {
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+enum Attribute {
+    XorMappedAddress(XorMappedAddress),
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct XorMappedAddress {
+    port: u16,
+    address: IpAddr,
+}
+
 impl<T: BorrowMut<[u8; HEADER_LEN]>> StunHeaderImpl<T> {
     fn set_message_type(&mut self, t: MsgType) -> &mut Self {
         let b: &mut [u8; HEADER_LEN] = self.0.borrow_mut();
@@ -180,7 +191,7 @@ impl StunHeaderRef<'_> {
     fn new(d: &[u8; HEADER_LEN]) -> Result<StunHeaderRef<'_>> {
         let s = StunHeaderImpl(d);
         if !s.valid() {
-            Err(anyhow!("invalid stun header: magic cookie not found"))?
+            return Err(anyhow!("invalid stun header: magic cookie not found"));
         }
 
         Ok(s)
@@ -269,7 +280,7 @@ pub fn send_stun_binding_request(
         info!(log, "Header: {h:02X?}");
         info!(log, "Message: {msg:02X?}");
 
-        let attrs = parse_attributes(log, msg);
+        let attrs = parse_attributes(log, h, msg);
         info!(log, "Attributes: {attrs:?}");
 
         break;
@@ -278,7 +289,11 @@ pub fn send_stun_binding_request(
     Ok(Ipv4Addr::from_str("1.1.1.1").unwrap())
 }
 
-fn parse_attributes<'a>(log: &'_ Logger, d: &'a [u8]) -> HashMap<AttributeType, Vec<&'a [u8]>> {
+fn parse_attributes(
+    log: &'_ Logger,
+    header: StunHeaderRef,
+    d: &'_ [u8],
+) -> HashMap<AttributeType, Vec<Attribute>> {
     let mut attrs = HashMap::new();
 
     if !d.len().is_multiple_of(4) {
@@ -306,6 +321,7 @@ fn parse_attributes<'a>(log: &'_ Logger, d: &'a [u8]) -> HashMap<AttributeType, 
         }
 
         let val = &d[i..i + len];
+        i += len;
 
         let Ok(ty) = AttributeType::try_from(ty) else {
             warn!(log, "Attribute '{ty}' not known.");
@@ -313,13 +329,30 @@ fn parse_attributes<'a>(log: &'_ Logger, d: &'a [u8]) -> HashMap<AttributeType, 
             continue;
         };
 
+        warn!(log, "Attribute '{ty:?}' with length '{}'.", val.len());
+
+        let attr: Attribute = match ty {
+            AttributeType::XorMappedAddress => {
+                info!(log, "Parsing XOR mapped address.");
+                let Some(add) = parse_xor_mapped_address(header, val) else {
+                    warn!(log, "Could not parse XOR mapped address.");
+                    continue;
+                };
+                Attribute::XorMappedAddress(add)
+            }
+        };
+
         match attrs.get_mut(&ty) {
             Some(v) => {
-                v.push(val);
+                v.push(attr);
             }
             None => {
-                attrs.insert(ty, vec![val]);
+                attrs.insert(ty, vec![attr]);
             }
+        }
+
+        match ty {
+            AttributeType::XorMappedAddress => {}
         }
 
         // Jump to next attribute which is 4 bytes aligned.
@@ -327,6 +360,33 @@ fn parse_attributes<'a>(log: &'_ Logger, d: &'a [u8]) -> HashMap<AttributeType, 
     }
 
     attrs
+}
+
+fn parse_xor_mapped_address(header: StunHeaderRef, val: &[u8]) -> Option<XorMappedAddress> {
+    let mut port: u16 = u16::from_be_bytes(*val[2..].first_chunk::<2>().unwrap());
+    port ^= (MAGIC_COOKIE >> 16) as u16;
+
+    let address: IpAddr = match val[1] {
+        0x01 => {
+            let mut address: u32 = u32::from_be_bytes(*val[4..8].first_chunk::<4>().unwrap());
+            address ^= MAGIC_COOKIE;
+            IpAddr::V4(Ipv4Addr::from_bits(address))
+        }
+        0x02 => {
+            let mut address: u128 = u128::from_be_bytes(*val[4..20].first_chunk::<16>().unwrap());
+
+            let mut key = [0u8; 16];
+            key[..4].copy_from_slice(&MAGIC_COOKIE.to_be_bytes());
+            key[4..].copy_from_slice(header.transaction_id());
+            let key = u128::from_ne_bytes(key);
+            address ^= key;
+
+            IpAddr::V6(Ipv6Addr::from_bits(address))
+        }
+        _ => return None,
+    };
+
+    Some(XorMappedAddress { port, address })
 }
 
 #[allow(unused_imports)]

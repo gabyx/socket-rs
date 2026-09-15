@@ -138,7 +138,7 @@ fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()
                     warn!(log, "receive from unknown source '{addr}'");
                     continue;
                 }
-                if b != 0 {
+                if b == 0 {
                     warn!(log, "receive no bytes from '{addr}'");
                     continue;
                 }
