@@ -7,8 +7,9 @@ use std::{
     ops::Range,
     random::{Rng, SystemRng},
     result::Result as StdResult,
-    str::FromStr,
 };
+
+use crate::comm::{self, Port};
 
 // STUN message header — RFC 5389 §6
 //
@@ -109,7 +110,7 @@ enum Attribute {
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 struct XorMappedAddress {
-    port: u16,
+    port: comm::Port,
     address: IpAddr,
 }
 
@@ -215,7 +216,7 @@ pub fn send_stun_binding_request(
     log: &Logger,
     socket: &net::UdpSocket,
     server: (&str, u16),
-) -> Result<Ipv4Addr> {
+) -> Result<(Ipv4Addr, Port)> {
     let server: SocketAddr = server
         .to_socket_addrs()?
         .find(SocketAddr::is_ipv4)
@@ -283,10 +284,18 @@ pub fn send_stun_binding_request(
         let attrs = parse_attributes(log, h, msg);
         info!(log, "Attributes: {attrs:?}");
 
-        break;
+        let Some(addrs) = attrs.get(&AttributeType::XorMappedAddress) else {
+            return Err(anyhow!("could not get address from STUN message"));
+        };
+        let Attribute::XorMappedAddress(a) = addrs[0];
+        let IpAddr::V4(ip) = a.address else {
+            return Err(anyhow!("no ipv4 found in STUN message"));
+        };
+
+        return Ok((ip, a.port));
     }
 
-    Ok(Ipv4Addr::from_str("1.1.1.1").unwrap())
+    Err(anyhow!("failed STUN request/response"))
 }
 
 fn parse_attributes(
@@ -363,7 +372,7 @@ fn parse_attributes(
 }
 
 fn parse_xor_mapped_address(header: StunHeaderRef, val: &[u8]) -> Option<XorMappedAddress> {
-    let mut port: u16 = u16::from_be_bytes(*val[2..].first_chunk::<2>().unwrap());
+    let mut port: comm::Port = u16::from_be_bytes(*val[2..].first_chunk::<2>().unwrap());
     port ^= (MAGIC_COOKIE >> 16) as u16;
 
     let address: IpAddr = match val[1] {

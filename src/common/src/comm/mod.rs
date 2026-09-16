@@ -2,6 +2,8 @@ use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::convert::From;
 
+pub type Port = u16;
+
 #[derive(Debug, Copy, Clone, ValueEnum, Serialize, Deserialize)]
 pub enum Side {
     A,

@@ -1,14 +1,13 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
-    comm,
+    comm::{self, Port},
     stun::{self, send_stun_binding_request},
 };
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
-    net::{self, Ipv4Addr, SocketAddr},
-    str::FromStr,
+    net::{self, SocketAddr},
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -53,8 +52,8 @@ fn main() -> Result<()> {
     info!(log, "Starting up"; "side" => ?args.side);
 
     let socket = start_socket(&log, args.side)?;
-    let address = discover_address(&log, &socket)?;
-    info!(log, "Discovered address over STUN: {address}");
+    let (ip, port) = discover_address(&log, &socket)?;
+    info!(log, "Discovered own address over STUN: {ip}:{port}");
 
     ping_pong(&log, args.side, &socket)?;
 
@@ -93,7 +92,7 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     Ok(socket)
 }
 
-fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<net::Ipv4Addr> {
+fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<(net::Ipv4Addr, Port)> {
     send_stun_binding_request(log, socket, stun::PUBLIC_STUN_SERVER)
 }
 

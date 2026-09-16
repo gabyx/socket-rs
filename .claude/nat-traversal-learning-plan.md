@@ -105,18 +105,16 @@ by hand.
   the `XOR-MAPPED-ADDRESS` from the response. Print your reflexive endpoint.
 - **Learning question:** why must the STUN request go out of the _same_ socket
   you'll use for peer data?
-- **Done check:** you print a public `ip:port`; from two networks it differs
-  from your LAN address.
+- **Done check:** you print a public `ip:port`;
 
 ### M3 — Signaling / rendezvous
 
 - **Article:** "Allocating ports" → the need to exchange addresses.
 - **Concept:** hole punching needs each side to know the _other's_ candidate
   endpoints. NAT can't deliver that — you need an out-of-band channel.
-- **Deliverable:** simplest first: **manual** — print your candidates (LAN +
-  reflexive), paste the peer's in via stdin/flag. Then (optional) a tiny TCP
-  "rendezvous" server that both peers connect to and which swaps their candidate
-  lists.
+- **Deliverable:** simplest first: **file based** — Create two files with the
+  serialized `ip:port`. Then (optional) a tiny TCP "rendezvous" server that both
+  peers connect to and which swaps their candidate lists.
 - **Learning question:** why can the signaling channel be slow/high-latency
   without hurting the eventual direct connection?
 - **Done check:** each side ends up holding the other's `{lan, reflexive}`
