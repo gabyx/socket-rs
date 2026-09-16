@@ -2,12 +2,12 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
     comm::{self, Port},
-    stun::{self, send_stun_binding_request},
+    stun::{self, PUBLIC_STUN_SERVER, send_stun_binding_request},
 };
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};
 use std::{
-    net::{self, SocketAddr},
+    net::{self, Ipv4Addr, Ipv6Addr, SocketAddr},
     thread::sleep,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -22,6 +22,18 @@ struct Args {
         help = "Which side this client is on."
     )]
     side: comm::Side,
+
+    // Only to test the STUN response, the NAT traversal is an IPv4 problem
+    // since the IPv6 is the identity function on a NAT:
+    // ┌──────────────────┬────────────────────────────────┬────────────────────────────┐
+    // │                  │           IPv4 + NAT           │            IPv6            │
+    // ├──────────────────┼────────────────────────────────┼────────────────────────────┤
+    // │ Address mapping  │ rewrites ip:port, table-driven │ none, identity             │
+    // ├──────────────────┼────────────────────────────────┼────────────────────────────┤
+    // │ Packet filtering │ derived from the mapping table │ explicit stateful firewall │
+    // └──────────────────┴────────────────────────────────┴────────────────────────────┘
+    #[clap(long, default_value = "false", help = "If we use an IPv6 socket.")]
+    ipv6: bool,
 }
 
 /// One datagram exchanged between the two peers: a ping carrying its sequence
@@ -51,16 +63,16 @@ fn main() -> Result<()> {
 
     info!(log, "Starting up"; "side" => ?args.side);
 
-    let socket = start_socket(&log, args.side)?;
-    let (ip, port) = discover_address(&log, &socket)?;
+    let socket = start_socket(&log, args.ipv6, args.side)?;
+    let (ip, port) = send_stun_binding_request(&log, args.ipv6, &socket, PUBLIC_STUN_SERVER)?;
     info!(log, "Discovered own address over STUN: {ip}:{port}");
 
-    ping_pong(&log, args.side, &socket)?;
+    ping_pong(&log, args.ipv6, args.side, &socket)?;
 
     Ok(())
 }
 
-fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
+fn start_socket(log: &Logger, ipv6: bool, side: comm::Side) -> Result<net::UdpSocket> {
     // NOTE: We must take 127.0.0.1 otherwise we cannot
     // send the STUN binding response to on off-host address.
     // cause that IP is the loop back device.
@@ -80,20 +92,20 @@ fn start_socket(log: &Logger, side: comm::Side) -> Result<net::UdpSocket> {
     // a `socket.connect()` does not make sense and anyway is a sole kernel
     // operation on UDP sockets.
     //
-    let our_addr = format!("0.0.0.0:{}", side.port());
+    let our_addr: SocketAddr = if ipv6 {
+        (Ipv6Addr::UNSPECIFIED, side.port()).into()
+    } else {
+        (Ipv4Addr::UNSPECIFIED, side.port()).into()
+    };
 
     info!(log, "Binding UDP socket"; "address" => &our_addr);
 
-    let socket = net::UdpSocket::bind(&our_addr)
+    let socket = net::UdpSocket::bind(our_addr)
         .with_context(|| format!("Cannot bind socket on {our_addr}"))?;
 
     socket.set_read_timeout(Some(Duration::from_millis(500)))?;
 
     Ok(socket)
-}
-
-fn discover_address(log: &Logger, socket: &net::UdpSocket) -> Result<(net::Ipv4Addr, Port)> {
-    send_stun_binding_request(log, socket, stun::PUBLIC_STUN_SERVER)
 }
 
 fn wait_for_sync_point(log: &Logger) {
@@ -112,9 +124,13 @@ fn wait_for_sync_point(log: &Logger) {
 }
 
 #[allow(clippy::similar_names)]
-fn ping_pong(log: &Logger, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
+fn ping_pong(log: &Logger, ipv6: bool, side: comm::Side, sock: &net::UdpSocket) -> Result<()> {
     wait_for_sync_point(log);
-    let other_addr: SocketAddr = ([127, 0, 0, 1], side.other().port()).into();
+    let other_addr: SocketAddr = if ipv6 {
+        (Ipv6Addr::LOCALHOST, side.other().port()).into()
+    } else {
+        (Ipv4Addr::LOCALHOST, side.other().port()).into()
+    };
 
     let mut data = vec![];
 

@@ -40,7 +40,8 @@ const HEADER_TYPE: Range<usize> = 0..2; // Big-endian u16.
 const HEADER_LENGTH: Range<usize> = 2..4; // Big-endian u16.
 const HEADER_COOKIE: Range<usize> = 4..8; // Big-endian u32.
 const HEADER_TXID: Range<usize> = 8..20;
-const MAGIC_COOKIE: u32 = 0x2112_A442;
+
+const MAGIC_COOKIE: u32 = 0x2112_A442; // In Big-endian u32.
 
 // The message type in the header is interleaved with class and method:
 // u16: `0 0 M11 M10 M9 M8 M7 C1 M6 M5 M4 C0 M3 M2 M1 M0`:
@@ -214,12 +215,18 @@ impl StunHeaderRef<'_> {
 /// # Errors
 pub fn send_stun_binding_request(
     log: &Logger,
+    ipv6: bool,
     socket: &net::UdpSocket,
     server: (&str, u16),
-) -> Result<(Ipv4Addr, Port)> {
+) -> Result<(IpAddr, Port)> {
+    info!(log, "Resolve address to public server {server:?}.");
     let server: SocketAddr = server
         .to_socket_addrs()?
-        .find(SocketAddr::is_ipv4)
+        .find(if ipv6 {
+            SocketAddr::is_ipv6
+        } else {
+            SocketAddr::is_ipv4
+        })
         .ok_or_else(|| anyhow!("no IPv4 address for stun.l.google.com"))?;
 
     let b = StunHeader::new_binding_request();
@@ -288,11 +295,8 @@ pub fn send_stun_binding_request(
             return Err(anyhow!("could not get address from STUN message"));
         };
         let Attribute::XorMappedAddress(a) = addrs[0];
-        let IpAddr::V4(ip) = a.address else {
-            return Err(anyhow!("no ipv4 found in STUN message"));
-        };
 
-        return Ok((ip, a.port));
+        return Ok((a.address, a.port));
     }
 
     Err(anyhow!("failed STUN request/response"))
@@ -312,29 +316,28 @@ fn parse_attributes(
     }
 
     let mut i = 0;
-    while i < d.len() {
+
+    while i + 4 <= d.len() {
         let ty = u16::from_be_bytes(*d[i..i + 2].first_chunk::<2>().unwrap());
         i += 2;
-
         let len = u16::from_be_bytes(*d[i..i + 2].first_chunk::<2>().unwrap()) as usize;
         i += 2;
 
-        if i + len > d.len() {
+        let jump_to_next_attr = |i: usize| i.next_multiple_of(4);
+
+        let Some(val) = &d.get(i..i + len) else {
             warn!(
                 log,
                 "Length in attribute is corrupt: {i} + {len} >= {}.",
                 d.len()
             );
-
             return attrs;
-        }
-
-        let val = &d[i..i + len];
+        };
         i += len;
 
         let Ok(ty) = AttributeType::try_from(ty) else {
             warn!(log, "Attribute '{ty}' not known.");
-            i += 4 - (len % 4);
+            i = jump_to_next_attr(i);
             continue;
         };
 
@@ -360,12 +363,7 @@ fn parse_attributes(
             }
         }
 
-        match ty {
-            AttributeType::XorMappedAddress => {}
-        }
-
-        // Jump to next attribute which is 4 bytes aligned.
-        i += 4 - (len % 4);
+        i = jump_to_next_attr(i);
     }
 
     attrs
@@ -387,7 +385,7 @@ fn parse_xor_mapped_address(header: StunHeaderRef, val: &[u8]) -> Option<XorMapp
             let mut key = [0u8; 16];
             key[..4].copy_from_slice(&MAGIC_COOKIE.to_be_bytes());
             key[4..].copy_from_slice(header.transaction_id());
-            let key = u128::from_ne_bytes(key);
+            let key = u128::from_be_bytes(key);
             address ^= key;
 
             IpAddr::V6(Ipv6Addr::from_bits(address))
