@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use common::{
-    comm::{self, Port},
-    stun::{self, PUBLIC_STUN_SERVER, send_stun_binding_request},
+    comm::{self},
+    stun::{PUBLIC_STUN_SERVER, send_stun_binding_request},
 };
 use serde::{Deserialize, Serialize};
 use slog::{Drain, Logger, info, o, warn};

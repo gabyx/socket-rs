@@ -285,6 +285,11 @@ pub fn send_stun_binding_request(
             }
         }
 
+        if b.transaction_id() != h.transaction_id() {
+            warn!(log, "Transaction ID is not the same, skip.");
+            continue;
+        }
+
         info!(log, "Header: {h:02X?}");
         info!(log, "Message: {msg:02X?}");
 

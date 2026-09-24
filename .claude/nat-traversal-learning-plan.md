@@ -107,6 +107,73 @@ by hand.
   you'll use for peer data?
 - **Done check:** you print a public `ip:port`;
 
+### M2.5 — Simulated NAT in a NixOS VM test
+
+- **Article:** re-read "Not all NATs are created equal" while writing the NAT
+  rules. You are now implementing the taxonomy instead of reading it.
+- **Concept:** you cannot observe NAT behaviour from a host that is not behind a
+  NAT, and you cannot iterate on M4–M6 against your ISP. A NixOS VM test gives
+  you a scripted network with the NAT boxes under your control. Keep the two
+  properties separate while configuring them: **mapping** (does the router reuse
+  one public port across different destinations?) and **filtering** (which
+  inbound packets does conntrack let through?). The four classic NAT types are
+  the product of these two axes.
+- **Constraint — this test is not hermetic.** The STUN server stays
+  `stun.l.google.com`, so the VMs need real internet. Nix builds run in a
+  sandbox with no network, so this cannot be a `nix flake check` entry. Build
+  the test **driver** and run it outside the sandbox instead
+  (`runNixOSTest { ... }.driver`, exposed as a flake `app`, e.g.
+  `nix run .#nat-vm`). The driver still runs the whole `testScript` unattended;
+  only the sandbox is gone.
+- **Deliverable:**
+  1. A `runNixOSTest` driver wired into the flake. A new
+     `tools/nix/checks/*.parts.nix` is picked up automatically by `import-tree`.
+     Four nodes, two VLANs, each NAT router masquerading onto its own uplink:
+
+     ```
+     peerA ──vlan1── natA ──uplink──> internet (Google STUN)
+     peerB ──vlan2── natB ──uplink──> internet
+     ```
+
+     `virtualisation.vlans = [ 1 ];` on a node gives it `eth1` on vlan 1; NixOS
+     assigns `192.168.<vlan>.<node index>` itself. The uplink is the VM's QEMU
+     user-mode interface — confirm which interface that is on your channel
+     before writing the NAT rules.
+
+  2. NAT on each router: `networking.nat.enable = true;` with
+     `internalInterfaces = [ "eth1" ]` and `externalInterface` set to the
+     uplink. That is MASQUERADE, which in Linux's default configuration behaves
+     as a port-restricted cone.
+  3. A test script that starts both peers and asserts each reports a reflexive
+     `ip:port` that differs from its own LAN address.
+- **Make it a knob, not a constant:** parameterise the driver over NAT flavour
+  so M4–M6 can reuse it. `--random-fully` on the MASQUERADE rule (via
+  `networking.nat.extraCommands`, or an explicit nftables ruleset) forces a
+  fresh random public port per destination — that is your symmetric NAT for M6.
+  Take the flavour as a function argument from the first version; retrofitting
+  it later is the expensive path.
+- **Watch out:**
+  - Disable `networking.firewall` on the two peer nodes. Otherwise you are
+    testing the peer's own firewall rather than the router's NAT, and M4 will
+    later fail for the wrong reason.
+  - Both VMs leave through the same host, so Google will report the **same
+    public IP** for both peers, with different ports. That is a double-NAT
+    chain, and the reflexive endpoint you observe is the _outermost_ NAT's, not
+    `natA`'s. Useful for M2.5 and M5; for M4 it means the two peers can only
+    reach each other if your own router does hairpinning. The honest end-to-end
+    M4 check stays "two real networks".
+  - M3 signaling stays **file based**. The peers are separate VMs with no shared
+    filesystem, so the driver moves the file: read it off one machine and write
+    it to the other. That is a faithful model of out-of-band signaling, not a
+    workaround.
+- **Learning question:** before writing any rules — with plain `MASQUERADE` on
+  both routers, which of the four classic behaviours do you expect, and which
+  single `iptables`/`nft` option changes the _mapping_ behaviour rather than the
+  _filtering_ behaviour? Write the prediction in `NOTES.md` first, then check it
+  against what the tool reports.
+- **Done check:** `nix run .#nat-vm` passes, and the log shows each peer's
+  reflexive `ip:port` as seen by Google, distinct from its LAN address.
+
 ### M3 — Signaling / rendezvous
 
 - **Article:** "Allocating ports" → the need to exchange addresses.
@@ -193,11 +260,15 @@ Pick one, cheapest first:
 1. **Loopback pseudo-NAT** (M1–M4 dev): a small in-process/UDP shim that
    rewrites source ports to emulate a mapping — fast, deterministic,
    unit-testable.
-2. **Linux network namespaces + `iptables MASQUERADE`** (realistic): two `netns`
-   behind NAT boxes; script `-j MASQUERADE` for cone types and `--random` for
-   symmetric. Best for M5–M7. (Do this on a machine you control; needs
-   root/`sudo`.)
-3. **Two real machines / phone hotspot** for the honest end-to-end demo.
+2. **NixOS VM test** (M2.5, the main harness): `runNixOSTest` with VMs on
+   virtual LANs and `networking.nat` on the router nodes. Scripted and
+   repeatable, no `sudo`. Not hermetic: STUN is the real Google server, so it
+   runs via the test driver outside the Nix sandbox, not as `nix flake check`.
+3. **Linux network namespaces + `iptables MASQUERADE`**: two `netns` behind NAT
+   boxes; script `-j MASQUERADE` for cone types and `--random-fully` for
+   symmetric. Same idea as M2.5 without the VMs — useful for quick manual
+   probing. (Needs root/`sudo` on a machine you control.)
+4. **Two real machines / phone hotspot** for the honest end-to-end demo.
 
 Add integration tests that assert "direct path established" per NAT class.
 
