@@ -12,7 +12,8 @@ You write the code. Claude acts as a **Socratic coach in a loop**: it explains
 the concept, points you at the right article section, reviews what you wrote,
 and hints — it does **not** hand you the full solution unless you explicitly
 ask. Claude should write simple english, not with lots of adjectives and be
-precise. Answers like in paper writing.
+precise. Answers like in paper writing. Also always answer networking question
+with ASCII diagrams for better understandability.
 
 > **Source of truth:** _How NAT traversal works_ — David Crawshaw, Tailscale.
 > https://tailscale.com/blog/how-nat-traversal-works (This plan was drafted from
@@ -111,6 +112,7 @@ by hand.
 
 - **Article:** re-read "Not all NATs are created equal" while writing the NAT
   rules. You are now implementing the taxonomy instead of reading it.
+
 - **Concept:** you cannot observe NAT behaviour from a host that is not behind a
   NAT, and you cannot iterate on M4–M6 against your ISP. A NixOS VM test gives
   you a scripted network with the NAT boxes under your control. Keep the two
@@ -118,6 +120,7 @@ by hand.
   one public port across different destinations?) and **filtering** (which
   inbound packets does conntrack let through?). The four classic NAT types are
   the product of these two axes.
+
 - **Constraint — this test is not hermetic.** The STUN server stays
   `stun.l.google.com`, so the VMs need real internet. Nix builds run in a
   sandbox with no network, so this cannot be a `nix flake check` entry. Build
@@ -126,6 +129,7 @@ by hand.
   `nix run .#nat-vm`). The driver still runs the whole `testScript` unattended;
   only the sandbox is gone.
 - **Deliverable:**
+
   1. A `runNixOSTest` driver wired into the flake. A new
      `tools/nix/checks/*.parts.nix` is picked up automatically by `import-tree`.
      Four nodes, two VLANs, each NAT router masquerading onto its own uplink:
@@ -144,8 +148,10 @@ by hand.
      `internalInterfaces = [ "eth1" ]` and `externalInterface` set to the
      uplink. That is MASQUERADE, which in Linux's default configuration behaves
      as a port-restricted cone.
+
   3. A test script that starts both peers and asserts each reports a reflexive
      `ip:port` that differs from its own LAN address.
+
 - **Make it a knob, not a constant:** parameterise the driver over NAT flavour
   so M4–M6 can reuse it. `--random-fully` on the MASQUERADE rule (via
   `networking.nat.extraCommands`, or an explicit nftables ruleset) forces a

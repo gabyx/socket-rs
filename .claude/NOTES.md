@@ -34,3 +34,30 @@ same port your peer will hit, the NAT must reuse one mapping across different
 destinations.
 
 Destination NAT is configurable in the router mostly.
+
+# M2.5
+
+```txt
+                    ┌─────────────────────────────────────────┐
+                    │  host: 3 VDE switches (3 unix sockets)   │
+                    └─────────────────────────────────────────┘
+
+   vlan 1                      vlan 3                     vlan 2
+ (VDE sock 1)               (VDE sock 3)               (VDE sock 2)
+      │                          │                          │
+      │                    ┌─────┴─────┐                    │
+      │                    │           │                    │
+ ┌────┴────┐          ┌────┴────┐ ┌────┴────┐          ┌────┴────┐
+ │ side-a  │          │  nat-a  │ │  nat-b  │          │ side-b  │
+ │  eth1   │          │  eth2   │ │  eth2   │          │  eth1   │
+ │.1.3     │          │  .3.1   │ │  .3.2   │          │  .2.4   │
+ └─────────┘          └─────────┘ └─────────┘          └─────────┘
+      │                    │           │                    │
+      └────── vlan 1 ──────┘           └────── vlan 2 ──────┘
+                 nat-a eth1               nat-b eth1
+                  .1.1                     .2.2
+                                 │
+                            ┌────┴──────┐
+                            │stun-server│  eth1  .3.5
+                            └───────────┘
+```

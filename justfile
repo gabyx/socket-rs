@@ -45,6 +45,13 @@ build *args:
 test *args:
     cargo test "$@"
 
+# Run the integration tests (NixOS VM tests).
+[group('general')]
+test-integration *args:
+    #!/usr/bin/env bash
+    export SHARED_DIR="{{output_dir}}/tests/integration/shared"
+    just nix::run integration-test.driver
+
 # Watch `cargo build|run|test ...` commands.
 [group('general')]
 watch *args:

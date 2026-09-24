@@ -39,6 +39,22 @@ repl *args:
         --accept-flake-config \
         "$flake_dir"
 
+# Run a package in the `packages` output of `flake.nix`
+[no-cd]
+run attrname *args:
+    #!/usr/bin/env bash
+    set -eu
+    root_dir=$(git rev-parse --show-toplevel) || exit 1
+    flake_dir="$root_dir/tools/nix"
+    nix_args=("${@:2}")
+
+    mkdir -p .output/package
+    outlink=".output/package/{{attrname}}"
+    nix run \
+        --accept-flake-config \
+        "${nix_args[@]}" \
+        -L "$flake_dir#{{attrname}}"
+
 # Build a package in the `packages` output of `flake.nix`
 alias build := package
 [no-cd]
