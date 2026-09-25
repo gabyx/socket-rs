@@ -1,5 +1,5 @@
 <h1 align="center">
-  socket-rs
+  nat-traversal-rs
 </h1>
 <p align="center">
 </p>
@@ -8,13 +8,29 @@
 [![Pipeline Status](https://img.shields.io/github/actions/workflow/status/gabyx/socket-rs/normal.yaml?label=ci)](https://github.com/gabyx/socket-rs/actions/workflows/normal.yaml)
 [![License label](https://img.shields.io/badge/License-MIT-blue.svg?)](https://mit-license.org/)
 
+## What Is This?
+
 ## Installation
 
-Describe the installation instruction here.
+```bash
+just develop
+# or
+direnv reload
+```
 
 ## Usage
 
-Describe the installation instruction here.
+To run the client side A:
+
+```bash
+just run --side a
+```
+
+and in another terminal run
+
+```bash
+just run --side b
+```
 
 ## Development
 
