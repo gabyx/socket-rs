@@ -30,7 +30,7 @@
           # NOTE: Uncomment the below to inspect what modules are loaded.
           # (i: i.map (x: lib.info "Importing :${x}" x))
           (i: i.filter (lib.hasInfix ".parts."))
-          (i: i ./.)
+          (i: i ../..)
         ]
       );
 
@@ -79,12 +79,11 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
 
-    
     # The Rust overlay to include the latest toolchain.
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    
+
   };
 }

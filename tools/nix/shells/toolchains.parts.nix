@@ -34,7 +34,7 @@
     in
     {
       # Define some toolchains.
-      toolchains = {
+      repo.toolchains = {
         inherit format changelog general;
       };
     };

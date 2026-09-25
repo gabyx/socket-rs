@@ -5,15 +5,19 @@
   perSystem =
     {
       self',
+      config,
       pkgs,
       ...
     }:
+    let
+      cfg = config;
+    in
     {
-      toolchains.rust = [
+      repo.toolchains.rust = [
         (
           { config, lib, ... }:
           let
-            toolchain = self'.legacyPackages.rust.shell.toolchain;
+            toolchain = cfg.repo.pinned.rust.shell.toolchain;
           in
           {
             packages = [

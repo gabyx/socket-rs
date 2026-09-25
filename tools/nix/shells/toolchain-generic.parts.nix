@@ -6,7 +6,7 @@
     { pkgs, ... }:
     {
       # The shell modules (devenv) for a generic shell.
-      toolchains.generic = [
+      repo.toolchains.generic = [
         {
           packages = [ pkgs.cowsay ];
         }

@@ -13,7 +13,7 @@
     }:
     let
       args = config.allModuleArgs; # See https://flake.parts/module-arguments#obtaining-all-module-arguments
-      toolchains = config.toolchains;
+      toolchains = config.repo.toolchains;
       language = "rust";
     in
     {

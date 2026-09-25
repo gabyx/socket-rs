@@ -28,6 +28,10 @@
       );
     in
     {
+      repo.pinned = {
+        inherit rust;
+      };
+
       legacyPackages = {
         inherit rust;
       };
